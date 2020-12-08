@@ -20,8 +20,7 @@ public class CameraLabeler : MonoBehaviour
     bool isRecorderOn;
     float _timeOut;
 
-    public int exportWidth;
-    public int exportHeight;
+    public Vector2Int exportSize;
 
     RecorderController recorderController;
     RecorderControllerSettings recorderControlSettings;
@@ -29,6 +28,7 @@ public class CameraLabeler : MonoBehaviour
 
     //Variables for common use
     string outputPathFolder;
+    public bool initTakeNum;
     public int takeNum;
 
     //Variables for objection rotation
@@ -52,11 +52,14 @@ public class CameraLabeler : MonoBehaviour
         //SETTINGS FOR OBJECT ROTATION
         Object.transform.position = Vector3.zero;
         pivot = GameObject.Find("Pivot");
-        pivot.transform.position = Object.GetComponent<MeshRenderer>().bounds.center;           //Verify if there could be any other renderer than MeshRenderer
+        pivot.transform.position = Object.GetComponent<MeshRenderer>().bounds.center;           //Need to verify if there could be any other renderer than MeshRenderer
         Object.transform.SetParent(pivot.transform);
 
         //MANUALLY SET TAKE NUMBER
-        PlayerPrefs.SetInt("Take", takeNum); 
+        if (initTakeNum)
+        {
+            PlayerPrefs.SetInt("Take", takeNum);
+        }
 
         /*OLD
         MainCar = transform.parent.gameObject;
@@ -82,7 +85,7 @@ public class CameraLabeler : MonoBehaviour
 
         outputPathFolder = Application.dataPath + "/Recordings/";       // ~Assets/Recordings
 
-        var renderTexture = new RenderTexture(exportWidth, exportHeight, 32);
+        var renderTexture = new RenderTexture(exportSize.x, exportSize.y, 32);
         GetComponent<Camera>().targetTexture = renderTexture;
 
         //GLOBAL UNITY RECORDER SETTINGS
@@ -102,8 +105,8 @@ public class CameraLabeler : MonoBehaviour
         movieRecorder.AudioInputSettings.PreserveAudio = false;
         movieRecorder.ImageInputSettings = new RenderTextureInputSettings
         {
-            OutputWidth = exportWidth,
-            OutputHeight = exportHeight,
+            OutputWidth = exportSize.x,
+            OutputHeight = exportSize.y,
             RenderTexture = renderTexture,
         };
 
@@ -140,8 +143,42 @@ public class CameraLabeler : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        pivot.transform.Rotate(0.1f, 0, 0);
+        if (isRecorderOn)
+        {
+            //Rotate Object
+            //"for loop"
+            pivot.transform.Rotate(0.1f, 0, 0);
+            pivot.transform.Rotate(0, 0.1f, 0);
 
+            //Write Content in txt file
+            outputContent = takeNumString + " " + frame + " ";
+
+            outputContent += "";//Boundbox & Rotation Info
+
+            outputContent += "\n";
+            File.AppendAllText(textPath, outputContent);
+            frame++;
+        }
+        else
+        {
+            if (_timeOut > 0)
+            {
+                _timeOut -= Time.deltaTime;
+            }
+            else
+            {
+                recorderController.PrepareRecording();
+                recorderController.StartRecording();
+                Debug.Log("Starting Recording");
+                isRecorderOn = true;
+            }
+        }
+        
+
+
+
+
+        
         if (_timeOut > 0)
         {
             _timeOut -= Time.deltaTime;
@@ -150,7 +187,6 @@ public class CameraLabeler : MonoBehaviour
             if (isRecorderOn)
             {
                 //UpdateVariables
-                /*carSpeed = MainCar.GetComponent<CarAIController>().Speed();*/
                 //Get TopLeft/BottomRight Coordinates
                 //topLeft = Camera.main.WorldToScreenPoint(Top_Left_Detector.position);
                 //bottomRight = Camera.main.WorldToScreenPoint(Bottom_Right_Detector.position);
@@ -183,7 +219,6 @@ public class CameraLabeler : MonoBehaviour
                 isRecordingDone = true;
                 Debug.Log("Stopped Recording");
                 PlayerPrefs.SetInt("Take", takeNum + 1);
-                //Debug.Log("Later Take : " + PlayerPrefs.GetInt("Take"));
             }
             else
             {
@@ -242,7 +277,7 @@ public class CameraLabeler : MonoBehaviour
 
     string BoundingBox(GameObject obj)
     {
-        float min_x = exportWidth, min_y = exportHeight, max_x = 0f, max_y = 0f;
+        float min_x = exportSize.x, min_y = exportSize.y, max_x = 0f, max_y = 0f;
         BoxCollider box = obj.GetComponent<BoxCollider>();
         Vector2 screenPos;
 
@@ -254,7 +289,7 @@ public class CameraLabeler : MonoBehaviour
                 {
                     screenPos = GetComponent<Camera>().WorldToScreenPoint(obj.transform.position + new Vector3(box.center.x + (i * (box.size.x / 2)), box.center.y + (j * (box.size.y / 2)), box.center.z + (k * (box.size.z / 2))));
 
-                    if (screenPos.x < 0f || screenPos.x > exportWidth || screenPos.y < 0f || screenPos.y > exportHeight)
+                    if (screenPos.x < 0f || screenPos.x > exportSize.x || screenPos.y < 0f || screenPos.y > exportSize.y)
                     {
                         return "";
                     }
