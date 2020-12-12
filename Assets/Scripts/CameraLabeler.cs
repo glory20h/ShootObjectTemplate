@@ -13,68 +13,68 @@ public class CameraLabeler : MonoBehaviour
 
     //Variables for Video Recording
     float captureDelay = 1f;
-    float captureDuration = 15f;
-    bool _done;
     bool isRecordingToPrepare;
     bool isRecordingDone;
     bool isRecorderOn;
     float _timeOut;
 
-    public Vector2Int exportSize;
+    public Vector2Int frameSize = new Vector2Int(800, 800);
+    public int frameRate = 20;
+
+    string outputPathFolder;
+    public bool initTakeNum;
+    int takeNum;
 
     RecorderController recorderController;
     RecorderControllerSettings recorderControlSettings;
     MovieRecorderSettings movieRecorder;
 
-    //Variables for common use
-    string outputPathFolder;
-    public bool initTakeNum;
-    public int takeNum;
-
-    //Variables for objection rotation
+    //Variables for object rotation
     GameObject pivot;
+    float xrot;
+    float yrot;
+    public float xRotationAmount = 10f;
+    public float yRotationAmount = 10f;
     
     //Variables for Text Output
     string textPath;
     string outputContent;
     int frame;
     string takeNumString;
-    Rect boundBox;
+    Bounds bound;
 
     void Start()
     {
-        //The code works if the user just sets the name of the object to "Object"
+        //The code works even if the user just sets the name of the object to "Object"
         if (!Object)
         {
             Object = GameObject.Find("Object");
         }
 
+        //SETTINGS FOR BOUNDING BOX
+        bound = Object.GetComponent<MeshRenderer>().bounds;
+
+        //If the gameobject to detect doesn't use MeshRenderer, bounds can be manually set with a box collider instead.
+        if (bound == null)
+        {
+            bound = Object.GetComponent<BoxCollider>().bounds;
+        }
+
         //SETTINGS FOR OBJECT ROTATION
         Object.transform.position = Vector3.zero;
         pivot = GameObject.Find("Pivot");
-        pivot.transform.position = Object.GetComponent<MeshRenderer>().bounds.center;           //Need to verify if there could be any other renderer than MeshRenderer
+        pivot.transform.position = bound.center;           //Need to verify if there could be any other renderer than MeshRenderer
         Object.transform.SetParent(pivot.transform);
+        xrot = 0;
+        yrot = 0;
 
         //MANUALLY SET TAKE NUMBER
         if (initTakeNum)
         {
-            PlayerPrefs.SetInt("Take", takeNum);
+            PlayerPrefs.SetInt("Take", 0);
         }
 
-        /*OLD
-        MainCar = transform.parent.gameObject;
-        DetectionBox = TargetPedestrian.transform.Find("DetectionBox");
-        Top_Left_Detector = DetectionBox.Find("TopLeft");
-        Bottom_Right_Detector = DetectionBox.Find("BottomRight");
-
-        //Get variable values for text output
-        //carDirection = MainCar.GetComponent<CarState>().MovingDirection();
-        //pedestrianBehavior = TargetPedestrian.GetComponent<PedestrianState>().Behavior();
-        //viewTarget = TargetPedestrian.GetComponent<PedestrianState>().ViewTarget();
-        OLD */
-
         frame = 0;
-        _done = false;
         isRecordingToPrepare = true;
         isRecordingDone = false;
         isRecorderOn = false;
@@ -85,14 +85,14 @@ public class CameraLabeler : MonoBehaviour
 
         outputPathFolder = Application.dataPath + "/Recordings/";       // ~Assets/Recordings
 
-        var renderTexture = new RenderTexture(exportSize.x, exportSize.y, 32);
+        var renderTexture = new RenderTexture(frameSize.x, frameSize.y, 32);
         GetComponent<Camera>().targetTexture = renderTexture;
 
         //GLOBAL UNITY RECORDER SETTINGS
         RecorderOptions.VerboseMode = true;
         recorderControlSettings = ScriptableObject.CreateInstance<RecorderControllerSettings>();
         recorderControlSettings.FrameRatePlayback = FrameRatePlayback.Constant;
-        recorderControlSettings.FrameRate = 10;
+        recorderControlSettings.FrameRate = frameRate;
         recorderControlSettings.CapFrameRate = true;
 
         //MOVIE RECORDER SETTINGS
@@ -105,8 +105,8 @@ public class CameraLabeler : MonoBehaviour
         movieRecorder.AudioInputSettings.PreserveAudio = false;
         movieRecorder.ImageInputSettings = new RenderTextureInputSettings
         {
-            OutputWidth = exportSize.x,
-            OutputHeight = exportSize.y,
+            OutputWidth = frameSize.x,
+            OutputHeight = frameSize.y,
             RenderTexture = renderTexture,
         };
 
@@ -114,7 +114,6 @@ public class CameraLabeler : MonoBehaviour
 
         recorderController = new RecorderController(recorderControlSettings);
 
-        
         if(movieRecorder.Take < 10)
         {
             takeNumString = "00" + movieRecorder.Take;
@@ -132,12 +131,6 @@ public class CameraLabeler : MonoBehaviour
         textPath = outputPathFolder + takeNumString + ".txt";
         if (File.Exists(textPath)) File.Delete(textPath); //Delete file if text file already exists
         File.WriteAllText(textPath, "");
-
-        //////////////////////////////Experiment Zone//////////////////////////////
-        
-
-
-        //////////////////////////////Experiment Zone//////////////////////////////
     }
 
     // Update is called once per frame
@@ -145,40 +138,70 @@ public class CameraLabeler : MonoBehaviour
     {
         if (isRecorderOn)
         {
-            //Rotate Object
-            //"for loop"
-            pivot.transform.Rotate(0.1f, 0, 0);
-            pivot.transform.Rotate(0, 0.1f, 0);
-
             //Write Content in txt file
             outputContent = takeNumString + " " + frame + " ";
 
-            outputContent += "";//Boundbox & Rotation Info
+            //Boundbox & Rotation Info
+            outputContent += BoundingBox();
+            outputContent += xrot + " " + yrot;
 
             outputContent += "\n";
             File.AppendAllText(textPath, outputContent);
             frame++;
+
+            //Rotate Object
+            pivot.transform.Rotate(xRotationAmount, 0, 0);
+            xrot += xRotationAmount;
+
+            if (xrot >= 360f)
+            {
+                xrot -= 360f;
+
+                pivot.transform.Rotate(0, yRotationAmount, 0);
+                yrot += yRotationAmount;
+
+                if (yrot >= 360f)
+                {
+                    //Object rotation is finished.
+                    isRecorderOn = false;
+                    isRecordingDone = true;
+                }
+            }
         }
         else
         {
-            if (_timeOut > 0)
+            if (isRecordingDone)
             {
-                _timeOut -= Time.deltaTime;
+                _timeOut = 1;
+                recorderController.StopRecording();
+                isRecordingDone = false;
+                Debug.Log("Stopped Recording");
+                PlayerPrefs.SetInt("Take", takeNum + 1);
             }
             else
             {
-                recorderController.PrepareRecording();
-                recorderController.StartRecording();
-                Debug.Log("Starting Recording");
-                isRecorderOn = true;
+                if (_timeOut > 0)
+                {
+                    _timeOut -= Time.deltaTime;
+                }
+                else if(isRecordingToPrepare)
+                {
+                    recorderController.PrepareRecording();
+                    recorderController.StartRecording();
+                    Debug.Log("Starting Recording");
+                    isRecorderOn = true;
+                    isRecordingToPrepare = false;
+                }
+                else
+                {
+                    //once everything is done automatically exit the simulation
+                    EditorApplication.isPlaying = false;
+                    return;
+                }
             }
         }
-        
 
-
-
-
-        
+        /*
         if (_timeOut > 0)
         {
             _timeOut -= Time.deltaTime;
@@ -225,60 +248,14 @@ public class CameraLabeler : MonoBehaviour
                 EditorApplication.isPlaying = false;
                 return;
             }
-
-            /*
-            //once everything is done automatically exit the simulation
-            if (_done)
-            {
-                EditorApplication.isPlaying = false;
-                return;
-            }
-
-            if (!recorderController.IsRecording())
-            {
-                //once the time set in the shutterdelay has passed start the recording and set the timer to the duration specified
-                _timeOut = captureDuration;
-                recorderController.PrepareRecording();
-                recorderController.StartRecording();
-                Debug.Log("Starting Recording");
-            }
-            else
-            {
-                //set another 1 second timer once the recording is finished
-                //this is required due to internal postproccessing and saving of the video files.
-                _timeOut = 1;
-                recorderController.StopRecording();
-                _done = true;
-                Debug.Log("Stopped Recording");
-                PlayerPrefs.SetInt("Take", takeNum+1);
-                //Debug.Log("Later Take : " + PlayerPrefs.GetInt("Take"));
-            }
-            */
         }
-        
-        /*
-        if (!_recorderController.IsRecording())
-        {
-            //once the time set in the shutterdelay has passed start the recording and set the timer to the duration specified
-            _recorderController.PrepareRecording();
-            _recorderController.StartRecording();
-            Debug.Log("Starting Recording");
-        }
-
-        //Set Output Format here
-        outputFormat = DefaultWildcard.Take + " " + frame;
-
-        //Add text to file
-        File.AppendAllText(outputPath, outputFormat);
-
-        frame++;
         */
+
     }
 
-    string BoundingBox(GameObject obj)
+    string BoundingBox()
     {
-        float min_x = exportSize.x, min_y = exportSize.y, max_x = 0f, max_y = 0f;
-        BoxCollider box = obj.GetComponent<BoxCollider>();
+        float min_x = frameSize.x, min_y = frameSize.y, max_x = 0f, max_y = 0f;
         Vector2 screenPos;
 
         for(int i = -1; i <= 1; i += 2)
@@ -287,9 +264,9 @@ public class CameraLabeler : MonoBehaviour
             {
                 for (int k = -1; k <= 1; k += 2)
                 {
-                    screenPos = GetComponent<Camera>().WorldToScreenPoint(obj.transform.position + new Vector3(box.center.x + (i * (box.size.x / 2)), box.center.y + (j * (box.size.y / 2)), box.center.z + (k * (box.size.z / 2))));
+                    screenPos = GetComponent<Camera>().WorldToScreenPoint(new Vector3(bound.center.x + (i * bound.extents.x), bound.center.y + (j * bound.extents.y), bound.center.z + (k * bound.extents.z)));
 
-                    if (screenPos.x < 0f || screenPos.x > exportSize.x || screenPos.y < 0f || screenPos.y > exportSize.y)
+                    if (screenPos.x < 0f || screenPos.x > frameSize.x || screenPos.y < 0f || screenPos.y > frameSize.y)
                     {
                         return "";
                     }
@@ -298,17 +275,17 @@ public class CameraLabeler : MonoBehaviour
                     {
                         min_x = screenPos.x;
                     }
-                    if(min_y > (1080f - screenPos.y))
+                    if(min_y > (frameSize.y - screenPos.y))
                     {
-                        min_y = 1080f - screenPos.y;
+                        min_y = frameSize.y - screenPos.y;
                     }
                     if(max_x < screenPos.x)
                     {
                         max_x = screenPos.x;
                     }
-                    if(max_y < (1080f - screenPos.y))
+                    if(max_y < (frameSize.y - screenPos.y))
                     {
-                        max_y = 1080f - screenPos.y;
+                        max_y = frameSize.y - screenPos.y;
                     }
                 }
             }
@@ -316,24 +293,5 @@ public class CameraLabeler : MonoBehaviour
 
         string outputContent = min_x + " " + min_y + " " + max_x + " " + max_y + " ";
         return outputContent;
-
-        /*
-        Vector2 pos1 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x + (box.size.x / 2), box.center.y + (box.size.y / 2), box.center.z + (box.size.z / 2)));
-        Vector2 pos2 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x - (box.size.x / 2), box.center.y + (box.size.y / 2), box.center.z + (box.size.z / 2)));
-        Vector2 pos3 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x + (box.size.x / 2), box.center.y - (box.size.y / 2), box.center.z + (box.size.z / 2)));
-        Vector2 pos4 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x - (box.size.x / 2), box.center.y - (box.size.y / 2), box.center.z + (box.size.z / 2)));
-        Vector2 pos5 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x + (box.size.x / 2), box.center.y + (box.size.y / 2), box.center.z - (box.size.z / 2)));
-        Vector2 pos6 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x - (box.size.x / 2), box.center.y + (box.size.y / 2), box.center.z - (box.size.z / 2)));
-        Vector2 pos7 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x + (box.size.x / 2), box.center.y - (box.size.y / 2), box.center.z - (box.size.z / 2)));
-        Vector2 pos8 = GetComponent<Camera>().WorldToScreenPoint(new Vector3(box.center.x - (box.size.x / 2), box.center.y - (box.size.y / 2), box.center.z - (box.size.z / 2)));
-
-        min_x = Mathf.Min(pos1.x, pos2.x, pos3.x, pos4.x, pos5.x, pos6.x, pos7.x, pos8.x);
-        max_x = Mathf.Max(pos1.x, pos2.x, pos3.x, pos4.x, pos5.x, pos6.x, pos7.x, pos8.x);
-        min_y = Mathf.Min(pos1.y, pos2.y, pos3.y, pos4.y, pos5.y, pos6.y, pos7.y, pos8.y);
-        max_y = Mathf.Max(pos1.y, pos2.y, pos3.y, pos4.y, pos5.y, pos6.y, pos7.y, pos8.y);
-
-        Rect r = Rect.MinMaxRect(min_x, min_y, max_x, max_y);
-        return r;
-        */
     }
 }
