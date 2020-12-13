@@ -17,6 +17,9 @@ public class Test : MonoBehaviour
         pivot.transform.position = bound.center;
         transform.SetParent(pivot.transform);
 
+        pivot.transform.Rotate(40, 0, 0);
+        bound = gameObject.GetComponent<MeshRenderer>().bounds;
+
         GameObject.Find("Test1").transform.position = new Vector3(bound.center.x + bound.extents.x, bound.center.y + bound.extents.y, bound.center.z + bound.extents.z);
         GameObject.Find("Test2").transform.position = new Vector3(bound.center.x + bound.extents.x, bound.center.y + bound.extents.y, bound.center.z - bound.extents.z);
         GameObject.Find("Test3").transform.position = new Vector3(bound.center.x + bound.extents.x, bound.center.y - bound.extents.y, bound.center.z + bound.extents.z);

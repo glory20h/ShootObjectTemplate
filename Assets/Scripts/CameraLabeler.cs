@@ -18,11 +18,11 @@ public class CameraLabeler : MonoBehaviour
     bool isRecorderOn;
     float _timeOut;
 
-    public Vector2Int frameSize = new Vector2Int(800, 800);
+    public Vector2Int resolution = new Vector2Int(800, 800);
     public int frameRate = 20;
 
     string outputPathFolder;
-    public bool initTakeNum;
+    public bool initVideoNameIndex;
     int takeNum;
 
     RecorderController recorderController;
@@ -51,16 +51,8 @@ public class CameraLabeler : MonoBehaviour
             Object = GameObject.Find("Object");
         }
 
-        //SETTINGS FOR BOUNDING BOX
-        bound = Object.GetComponent<MeshRenderer>().bounds;
-
-        //If the gameobject to detect doesn't use MeshRenderer, bounds can be manually set with a box collider instead.
-        if (bound == null)
-        {
-            bound = Object.GetComponent<BoxCollider>().bounds;
-        }
-
         //SETTINGS FOR OBJECT ROTATION
+        bound = GetBounds(Object);
         Object.transform.position = Vector3.zero;
         pivot = GameObject.Find("Pivot");
         pivot.transform.position = bound.center;           //Need to verify if there could be any other renderer than MeshRenderer
@@ -69,7 +61,7 @@ public class CameraLabeler : MonoBehaviour
         yrot = 0;
 
         //MANUALLY SET TAKE NUMBER
-        if (initTakeNum)
+        if (initVideoNameIndex)
         {
             PlayerPrefs.SetInt("Take", 0);
         }
@@ -85,7 +77,7 @@ public class CameraLabeler : MonoBehaviour
 
         outputPathFolder = Application.dataPath + "/Recordings/";       // ~Assets/Recordings
 
-        var renderTexture = new RenderTexture(frameSize.x, frameSize.y, 32);
+        var renderTexture = new RenderTexture(resolution.x, resolution.y, 32);
         GetComponent<Camera>().targetTexture = renderTexture;
 
         //GLOBAL UNITY RECORDER SETTINGS
@@ -105,8 +97,8 @@ public class CameraLabeler : MonoBehaviour
         movieRecorder.AudioInputSettings.PreserveAudio = false;
         movieRecorder.ImageInputSettings = new RenderTextureInputSettings
         {
-            OutputWidth = frameSize.x,
-            OutputHeight = frameSize.y,
+            OutputWidth = resolution.x,
+            OutputHeight = resolution.y,
             RenderTexture = renderTexture,
         };
 
@@ -142,14 +134,14 @@ public class CameraLabeler : MonoBehaviour
             outputContent = takeNumString + " " + frame + " ";
 
             //Boundbox & Rotation Info
-            outputContent += BoundingBox();
+            outputContent += BoundingBox(frame);
             outputContent += xrot + " " + yrot;
 
             outputContent += "\n";
             File.AppendAllText(textPath, outputContent);
             frame++;
 
-            //Rotate Object
+            //Rotate Object by x axis
             pivot.transform.Rotate(xRotationAmount, 0, 0);
             xrot += xRotationAmount;
 
@@ -157,6 +149,7 @@ public class CameraLabeler : MonoBehaviour
             {
                 xrot -= 360f;
 
+                //Rotate Object by y axis
                 pivot.transform.Rotate(0, yRotationAmount, 0);
                 yrot += yRotationAmount;
 
@@ -167,6 +160,9 @@ public class CameraLabeler : MonoBehaviour
                     isRecordingDone = true;
                 }
             }
+
+            //Update bounds after rotation
+            bound = GetBounds(Object);
         }
         else
         {
@@ -250,15 +246,14 @@ public class CameraLabeler : MonoBehaviour
             }
         }
         */
-
     }
 
-    string BoundingBox()
+    string BoundingBox(int frame)
     {
-        float min_x = frameSize.x, min_y = frameSize.y, max_x = 0f, max_y = 0f;
+        float min_x = resolution.x, min_y = resolution.y, max_x = 0f, max_y = 0f;
         Vector2 screenPos;
-
-        for(int i = -1; i <= 1; i += 2)
+        
+        for (int i = -1; i <= 1; i += 2)
         {
             for (int j = -1; j <= 1; j += 2)
             {
@@ -266,26 +261,46 @@ public class CameraLabeler : MonoBehaviour
                 {
                     screenPos = GetComponent<Camera>().WorldToScreenPoint(new Vector3(bound.center.x + (i * bound.extents.x), bound.center.y + (j * bound.extents.y), bound.center.z + (k * bound.extents.z)));
 
+                    /*
                     if (screenPos.x < 0f || screenPos.x > frameSize.x || screenPos.y < 0f || screenPos.y > frameSize.y)
                     {
-                        return "";
+                        return "(Frame " + frame + ": screenPos out of bounds; " + screenPos.x + " " + screenPos.y + ") ";
+                    }
+                    */
+
+                    //If screenPos is out of bounds of the screen, cap the value to the edge of screen
+                    if (screenPos.x < 0f)
+                    {
+                        screenPos.x = 0;
+                    }
+                    if (screenPos.x > resolution.x)
+                    {
+                        screenPos.x = resolution.x;
+                    }
+                    if (screenPos.y < 0f)
+                    {
+                        screenPos.y = 0;
+                    }
+                    if (screenPos.y > resolution.y)
+                    {
+                        screenPos.y = resolution.y;
                     }
 
                     if(min_x > screenPos.x)
                     {
                         min_x = screenPos.x;
                     }
-                    if(min_y > (frameSize.y - screenPos.y))
+                    if(min_y > (resolution.y - screenPos.y))
                     {
-                        min_y = frameSize.y - screenPos.y;
+                        min_y = resolution.y - screenPos.y;
                     }
                     if(max_x < screenPos.x)
                     {
                         max_x = screenPos.x;
                     }
-                    if(max_y < (frameSize.y - screenPos.y))
+                    if(max_y < (resolution.y - screenPos.y))
                     {
-                        max_y = frameSize.y - screenPos.y;
+                        max_y = resolution.y - screenPos.y;
                     }
                 }
             }
@@ -293,5 +308,18 @@ public class CameraLabeler : MonoBehaviour
 
         string outputContent = min_x + " " + min_y + " " + max_x + " " + max_y + " ";
         return outputContent;
+    }
+
+    Bounds GetBounds(GameObject obj)
+    {
+        bound = Object.GetComponent<MeshRenderer>().bounds;
+
+        //If the gameobject to detect doesn't use MeshRenderer, bounds can be manually set with a box collider instead.
+        if (bound == null)
+        {
+            bound = Object.GetComponent<BoxCollider>().bounds;
+        }
+
+        return bound;
     }
 }
